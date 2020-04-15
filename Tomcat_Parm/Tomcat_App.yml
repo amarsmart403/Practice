@@ -172,7 +172,6 @@
       tags :
        - always
       template: 
-      copy :
         src : /tmp/studentapp.sql.j2
         dest : /tmp/studentapp.sql
 
