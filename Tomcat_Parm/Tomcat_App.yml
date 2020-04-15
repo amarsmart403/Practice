@@ -1,0 +1,185 @@
+- name : create APP LAYER
+  hosts : "{{ hostenv }}"
+  become : yes
+  tags :
+    - DEV
+  vars :
+    USER_NAME : tomcat 
+    TOMCAT_URL : https://mirrors.estointernet.in/apache/tomcat/tomcat-9/v9.0.34/bin/apache-tomcat-9.0.34.tar.gz  
+  tasks :
+    - name : create DB variables 
+      tags :
+       - DEV
+      set_fact : 
+        SCHEMA : studentdevapp
+        
+    - name : create TOMCAT_HOME variable 
+      tags :
+       - QA
+      set_fact : 
+        SCHEMA : studentqaapp
+        
+    - name : create TOMCAT_HOME variable 
+      tags :
+       - PROD
+      set_fact : 
+        SCHEMA : studentprodapp
+        
+    - name : create TOMCAT_HOME Variable 
+      tags :
+       - always
+      shell : "echo {{TOMCAT_URL}} | awk -F / '{print $NF}' | sed -e 's/.tar.gz//g'"
+      register : tomc
+    
+    - name : create TOMCAT_HOME variable 
+      tags :
+       - always
+      set_fact : 
+        TOMCAT_HOME : "{{tomc.stdout}}"
+        
+    - name : declare STUDENT and MYSQL variables
+      tags :
+       - always
+      set_fact :
+        STUDENT :
+          URL : https://github.com/devops2k18/DevOpsAug/raw/master/APPSTACK/student.war
+          LOCATION : "/{{USER_NAME}}/{{TOMCAT_HOME}}/webapps"
+        MYSQL :
+          URL: https://github.com/devops2k18/DevOpsAug/raw/master/APPSTACK/mysql-connector-java-5.1.40.jar
+          LOCATION : "/{{USER_NAME}}/{{TOMCAT_HOME}}/lib"
+          
+    - name : create user
+      tags :
+       - always
+      user :
+        name : "{{USER_NAME}}"
+        
+    - name : create TOMCAT directory
+      tags :
+       - always
+      file :
+        path : "/{{USER_NAME}}" 
+        owner : "{{USER_NAME}}"
+        group : "{{USER_NAME}}"
+        mode : 0755
+        state : directory
+        
+    - name : install java software 
+      tags :
+       - always
+      yum :
+        name : java
+        state : latest 
+        
+    - name : download and extract tomcat server
+      tags :
+       - always
+      become_user : "{{USER_NAME}}"
+      unarchive :
+        src : "{{TOMCAT_URL}}"
+        dest : "/{{USER_NAME}}/"
+        remote_src : yes 
+        
+    - name : update context.xml file 
+      tags :
+       - always
+      blockinfile :
+        path : "/{{USER_NAME}}/{{TOMCAT_HOME}}/conf/context.xml"
+        block : |
+          <Resource name="jdbc/TestDB" auth="Container" type="javax.sql.DataSource" maxTotal="100" maxIdle="30" maxWaitMillis="10000" username="student" password="student@1" driverClassName="com.mysql.jdbc.Driver" url="jdbc:mysql://localhost:3306/{{SCHEMA}}"/>
+        insertbefore : </Context>
+        
+    - name : cleanup webapps directory 
+      tags :
+       - always
+      find :
+        paths : "/{{USER_NAME}}/{{TOMCAT_HOME}}/webapps"
+        file_type : any
+      register : webapp
+
+    - name : remove all from webapps
+      tags :
+       - always
+      file :
+        path : "{{item.path}}"
+        state : absent 
+      loop :
+        "{{webapp.files}}"
+        
+    - name : download STUDENT.war and MYSQL tomcat-connectors
+      tags :
+       - always
+      become_user : "{{USER_NAME}}"
+      get_url :
+        url : "{{item.URL}}"
+        dest : "{{item.LOCATION}}"
+      loop :
+        - "{{STUDENT}}"
+        - "{{MYSQL}}"
+
+    - name : check the tomcat server status
+      tags :
+       - always
+      become_user : "{{USER_NAME}}"
+      shell : ps -ef | grep tomcat | grep -v grep
+      register : Tstatus 
+      ignore_errors : true 
+
+    - name : start the tomcat server
+      tags :
+       - always
+      become_user : "{{USER_NAME}}"
+      shell : "nohup sh startup.sh"
+      args :
+        chdir : "/{{USER_NAME}}/{{TOMCAT_HOME}}/bin"
+      when : Tstatus.rc != 0
+
+    - name : restart the tomcat server
+      tags :
+       - always
+      become_user : "{{USER_NAME}}"
+      shell : "nohup sh shutdown.sh && nohup sh startup.sh"
+      args :
+        chdir : "/{{USER_NAME}}/{{TOMCAT_HOME}}/bin"
+      when : Tstatus.rc == 0
+
+- name : create DB layer 
+  hosts : "{{ hostenv }}"
+  become : yes 
+  tags :
+    - DEV 
+  tasks :
+    - name : install mariadb and mariadb-server
+      tags :
+       - always
+      yum :
+        name : "{{item}}"
+        state : latest 
+      loop :
+        - mariadb
+        - mariadb-server 
+        - MySQL-python
+        
+    - name : start mariadb server
+      tags :
+       - always
+      service : 
+        name : mariadb
+        state : started 
+        enabled : yes 
+
+    - name : copy sql query
+      tags :
+       - always
+      template: 
+      copy :
+        src : /tmp/studentapp.sql.j2
+        dest : /tmp/studentapp.sql
+
+    - name : create schema,tables 
+      tags :
+       - always
+      mysql_db :
+        state : import
+        name : all
+        target : /tmp/studentapp.sql
