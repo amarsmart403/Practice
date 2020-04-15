@@ -86,7 +86,7 @@
       blockinfile :
         path : "/{{USER_NAME}}/{{TOMCAT_HOME}}/conf/context.xml"
         block : |
-          <Resource name="jdbc/TestDB" auth="Container" type="javax.sql.DataSource" maxTotal="100" maxIdle="30" maxWaitMillis="10000" username="student" password="student@1" driverClassName="com.mysql.jdbc.Driver" url="jdbc:mysql://localhost:3306/{{SCHEMA}}"/>
+          <Resource name="jdbc/TestDB" auth="Container" type="javax.sql.DataSource" maxTotal="100" maxIdle="30" maxWaitMillis="10000" username="student" password="student@1" driverClassName="com.mysql.jdbc.Driver" url="jdbc:mysql://0.0.0.0:3306/{{SCHEMA}}"/>
         insertbefore : </Context>
         
     - name : cleanup webapps directory 
